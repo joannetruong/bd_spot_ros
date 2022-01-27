@@ -1,31 +1,25 @@
-from bd_spot_wrapper.spot import (
+from spot_wrapper.spot import (
     Spot,
 )
 import rospy
 from geometry_msgs.msg import PoseStamped, TwistStamped
+from sensor_msgs.msg import JointState
 
 POSE_TOPIC = "/spot_pose"
-VEL_TOPIC = "/spot_velocity"
-
-MIN_DEPTH = 0.3*1000
-MAX_DEPTH = 10.0*1000
-
-IMG_HEIGHT=480
-IMG_WIDTH=640
+VIS_VEL_TOPIC = "/spot_vision_vel"
+ODOM_VEL_TOPIC = "/spot_odom_vel"
+JOINT_STATE_TOPIC = "/spot_joint_states"
 
 class RoboStateNode:
     def __init__(self, spot, visualize=False):
         rospy.init_node("camera_node")
         self.spot = spot
 
-        # For generating Image ROS msgs
-        self.cv_bridge = CvBridge()
-
         # Instantiate ROS topic subscribers
-        self.state_pub = rospy.Publisher(VIZ_TOPIC, Image, queue_size=5)
-
         self.pose_pub = rospy.Publisher(POSE_TOPIC, PoseStamped, queue_size=5)
-        self.vel_pub = rospy.Publisher(VEL_TOPIC, TwistStamped, queue_size=5)
+        self.vis_vel_pub = rospy.Publisher(VIS_VEL_TOPIC, TwistStamped, queue_size=5)
+        self.odom_vel_pub = rospy.Publisher(ODOM_VEL_TOPIC, TwistStamped, queue_size=5)
+        self.joint_state_pub = rospy.Publisher(JOINT_STATE_TOPIC, JointState, queue_size=5)
 
     def publish_robot_pose(self):
         robot_position = self.spot.get_robot_position()
@@ -33,31 +27,63 @@ class RoboStateNode:
 
         robot_pose = PoseStamped()
         robot_pose.header.stamp = rospy.Time.now()
-        robot_pose.point.x = robot_position[0]  
-        robot_pose.point.y = robot_position[1]  
-        robot_pose.point.z = robot_position[2]  
-        robot_pose.orientation.x = robot_quat[0]  
-        robot_pose.orientation.y = robot_quat[1]  
-        robot_pose.orientation.z = robot_quat[2]  
-        robot_pose.orientation.w = robot_quat[3] 
+        robot_pose.pose.position.x = robot_position[0]  
+        robot_pose.pose.position.y = robot_position[1]  
+        robot_pose.pose.position.z = robot_position[2]  
+        robot_pose.pose.orientation.x = robot_quat[0]  
+        robot_pose.pose.orientation.y = robot_quat[1]  
+        robot_pose.pose.orientation.z = robot_quat[2]  
+        robot_pose.pose.orientation.w = robot_quat[3] 
         self.pose_pub.publish(robot_pose)
 
-    def publish_robot_vel(self):
-        robot_velocity = self.spot.get_robot_vel()
+    def vel_to_twist_msg(self, frame):
+        robot_linear_velocity = self.spot.get_robot_linear_vel(frame)
+        robot_angular_velocity = self.spot.get_robot_angular_vel(frame)
 
         robot_twist = TwistStamped()
-        robot_pose.header.stamp = rospy.Time.now()
-        robot_twist.linear.x = vel[0]
-        robot_twist.linear.y = vel[1]
-        robot_twist.linear.z = vel[2]
-        robot_twist.angular.x = vel[0]
-        robot_twist.angular.y = vel[1]
-        robot_twist.angular.z = vel[2]
-        self.vel_pub.publish(robot_twist)
+        robot_twist.header.stamp = rospy.Time.now()
+        robot_twist.twist.linear.x = robot_linear_velocity[0]
+        robot_twist.twist.linear.y = robot_linear_velocity[1]
+        robot_twist.twist.linear.z = robot_linear_velocity[2]
+        robot_twist.twist.angular.x = robot_angular_velocity[0]
+        robot_twist.twist.angular.y = robot_angular_velocity[1]
+        robot_twist.twist.angular.z = robot_angular_velocity[2]
+        return robot_twist
+
+    def publish_robot_vel(self):
+        robot_vis_twist = self.vel_to_twist_msg('vision')
+        robot_odom_twist = self.vel_to_twist_msg('odom')
+
+        self.vis_vel_pub.publish(robot_vis_twist)
+        self.odom_vel_pub.publish(robot_odom_twist)
+
+    def publish_robot_joint_states(self):
+        robot_joint_states = JointState()
+        joint_states = self.spot.get_robot_joint_states()
+
+        all_data = [
+            (name, data.position.value, data.velocity.value, data.acceleration.value)
+            for name, data in joint_states.items()
+        ]
+        names, positions, velocities, acceleration = [list(x) for x in zip(*all_data)]
+
+        robot_joint_states.name = names
+        robot_joint_states.position = positions
+        robot_joint_states.velocity = velocities
+        robot_joint_states.effort = acceleration
+
+        self.joint_state_pub.publish(robot_joint_states)
+
+    def publish_robot_feet_state(self):
+        # feet_state = self.spot.get_robot_foot_state()
+        feet_state = self.spot.get_robot_joint_states()
+        # print('JOANNE: ', feet_state)
 
     def publish_robot_state(self):
         self.publish_robot_pose()
         self.publish_robot_vel()
+        self.publish_robot_feet_state()
+        self.publish_robot_joint_states()
 
 
 def main():

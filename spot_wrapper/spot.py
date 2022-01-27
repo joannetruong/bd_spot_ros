@@ -64,6 +64,29 @@ class SpotCamIds(Enum):
     RIGHT_DEPTH_IN_VISUAL_FRAME = "right_depth_in_visual_frame"
     RIGHT_FISHEYE = "right_fisheye_image"
 
+ARM_6DOF_NAMES = [
+    "arm0.sh0",
+    "arm0.sh1",
+    "arm0.el0",
+    "arm0.el1",
+    "arm0.wr0",
+    "arm0.wr1",
+]
+
+JOINT_NAMES = [
+    "fl.hx",
+    "fl.hy",
+    "fl.kn",
+    "fr.hx",
+    "fr.hy",
+    "fr.kn",
+    "hl.hx",
+    "hl.hy",
+    "hl.kn",
+    "hr.hx",
+    "hr.hy",
+    "hr.kn"
+]
 
 class Spot:
     def __init__(self, client_name_prefix):
@@ -152,13 +175,28 @@ class Spot:
 
         return cmd_id
 
+    def get_robot_foot_state(self):
+        return self.robot_state_client.get_robot_state().foot_state
+
     def get_robot_kinematic_state(self):
-        return self.state_client.get_robot_state().kinematic_state
+        return self.robot_state_client.get_robot_state().kinematic_state
 
     def get_robot_state(self):
         robot_state_kin = self.get_robot_kinematic_state()
         robot_state = get_vision_tform_body(robot_state_kin.transforms_snapshot)
         return robot_state 
+
+    def get_robot_joint_states(self):
+        robot_state_kin = self.get_robot_kinematic_state()
+        joint_states = OrderedDict(
+            {
+                i.name: i
+                for i in robot_state_kin.joint_states
+                if i.name in JOINT_NAMES
+            }
+        )
+        # joint_states = robot_state_kin.joint_states
+        return joint_states
 
     def get_robot_position(self):
         robot_state = self.get_robot_state()
@@ -167,23 +205,35 @@ class Spot:
     def get_robot_quat(self):
         robot_state = self.get_robot_state()
         robot_quat = robot_state.rotation
-        return [rot.x, rot.y, rot.z, rot.w]
+        return [robot_quat.x, robot_quat.y, robot_quat.z, robot_quat.w]
 
     def get_robot_rpy(self):
         robot_state = self.get_robot_state()
         # returns as yaw, pitch, roll. Reverse the list to get it in roll, pitch, yaw form
         return math_helpers.quat_to_eulerZYX(robot_state.rotation)[::-1]
 
-    def get_robot_vel(self):
+    def get_robot_velocity(self, frame='vision'):
         robot_state_kin = self.get_robot_kinematic_state()
-        robot_velocity = robot_state_kin.velocity_of_body_in_vision
-        linear_vel = np.array([robot_velocity.linear.x, robot_velocity.linear.y])
-        yaw = self.get_robot_state()[-1]
+        if frame == 'odom':
+            robot_velocity = robot_state_kin.velocity_of_body_in_odom
+        elif frame == 'vision':
+            robot_velocity = robot_state_kin.velocity_of_body_in_vision
+        return robot_velocity
 
+    def get_robot_linear_vel(self, frame='vision'):
+        robot_velocity = self.get_robot_velocity(frame)
+        linear_vel = np.array([robot_velocity.linear.x, robot_velocity.linear.y, robot_velocity.linear.z])
+        return linear_vel
+
+    def get_robot_linear_vel_local(self, frame='vision'):
+        linear_vel = self.get_robot_linear_vel(frame)
+        yaw = self.get_robot_rpy()[-1]
         R = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
-        robot_local_velocity = np.linalg.inv(R) @ vel
+        return np.linalg.inv(R) @ linear_vel
 
-        return robot_local_velocity
+    def get_robot_angular_vel(self, frame='vision'):
+        robot_velocity = self.get_robot_velocity(frame)
+        return [robot_velocity.angular.x, robot_velocity.angular.y, robot_velocity.angular.z]
 
     def get_base_transform_to(self, child_frame):
         kin_state = self.robot_state_client.get_robot_state().kinematic_state
