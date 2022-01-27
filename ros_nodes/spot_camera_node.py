@@ -27,17 +27,24 @@ class SpotCamNode:
         self.fr_pub = rospy.Publisher(FR_TOPIC, Image, queue_size=5)
 
         self.fl_d_pub = rospy.Publisher(FL_D_TOPIC, Image, queue_size=5)
-        self.fr_d_pub = rospy.Publisher(FR_D_TOPIC, Image, queue_size=5)d_
+        self.fr_d_pub = rospy.Publisher(FR_D_TOPIC, Image, queue_size=5)
 
     def publish_imgs(self):
-        image_responses = self.spot.get_image_responses([SpotCamIds.FRONTLEFT_FISHEYE, SpotCamIds.FRONTRIGHT_FISHEYE])
-        fl_img, fr_img = [image_response_to_cv2(i) for i in image_responses]
+        image_responses = self.spot.get_image_responses([SpotCamIds.FRONTLEFT_FISHEYE, SpotCamIds.FRONTRIGHT_FISHEYE, SpotCamIds.FRONTLEFT_DEPTH, SpotCamIds.FRONTRIGHT_DEPTH])
+        # convert images to cv2 and rotate images ccw 90
+        fl_img, fr_img, fl_d_img, fr_d_img = [np.rot90(image_response_to_cv2(i), k=3) for i in image_responses]
 
         fl_img_msg = self.cv_bridge.cv2_to_imgmsg(fl_img, "mono8")
         self.fl_pub.publish(fl_img_msg)
 
         fr_img_msg = self.cv_bridge.cv2_to_imgmsg(fr_img, "mono8")
         self.fr_pub.publish(fr_img_msg)
+
+        fl_d_img_msg = self.cv_bridge.cv2_to_imgmsg(fl_d_img, "mono16")
+        self.fl_d_pub.publish(fl_d_img_msg)
+
+        fr_d_img_msg = self.cv_bridge.cv2_to_imgmsg(fr_d_img, "mono16")
+        self.fr_d_pub.publish(fr_d_img_msg)
 
 
 def main():
