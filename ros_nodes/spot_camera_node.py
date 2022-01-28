@@ -4,6 +4,7 @@ from spot_wrapper.spot import (
     image_response_to_cv2,
 )
 import cv2
+import numpy as np
 from cv_bridge import CvBridge
 import rospy
 from sensor_msgs.msg import Image

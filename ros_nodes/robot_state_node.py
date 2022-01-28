@@ -4,8 +4,10 @@ from spot_wrapper.spot import (
 import rospy
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from sensor_msgs.msg import JointState
+from nav_msgs.msg import Path
 
 POSE_TOPIC = "/spot_pose"
+PATH_TOPIC = "/spot_path"
 VIS_VEL_TOPIC = "/spot_vision_vel"
 ODOM_VEL_TOPIC = "/spot_odom_vel"
 JOINT_STATE_TOPIC = "/spot_joint_states"
@@ -16,6 +18,7 @@ class RoboStateNode:
         self.spot = spot
 
         # Instantiate ROS topic subscribers
+        self.path_pub = rospy.Publisher(PATH_TOPIC, Path, queue_size=5)
         self.pose_pub = rospy.Publisher(POSE_TOPIC, PoseStamped, queue_size=5)
         self.vis_vel_pub = rospy.Publisher(VIS_VEL_TOPIC, TwistStamped, queue_size=5)
         self.odom_vel_pub = rospy.Publisher(ODOM_VEL_TOPIC, TwistStamped, queue_size=5)
@@ -27,6 +30,7 @@ class RoboStateNode:
 
         robot_pose = PoseStamped()
         robot_pose.header.stamp = rospy.Time.now()
+        robot_pose.header.frame_id = 'map'
         robot_pose.pose.position.x = robot_position[0]  
         robot_pose.pose.position.y = robot_position[1]  
         robot_pose.pose.position.z = robot_position[2]  
@@ -75,8 +79,7 @@ class RoboStateNode:
         self.joint_state_pub.publish(robot_joint_states)
 
     def publish_robot_feet_state(self):
-        # feet_state = self.spot.get_robot_foot_state()
-        feet_state = self.spot.get_robot_joint_states()
+        feet_state = self.spot.get_robot_foot_state()
         # print('JOANNE: ', feet_state)
 
     def publish_robot_state(self):
