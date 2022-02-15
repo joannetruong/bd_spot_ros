@@ -5,40 +5,32 @@
 # Development Kit License (20191101-BDSDK-SL).
 
 """ Easy-to-use wrapper for properly controlling Spot """
+import os
+import time
+from collections import OrderedDict
+from enum import Enum
+
 import bosdyn.client
 import bosdyn.client.lease
 import bosdyn.client.util
+import cv2
+import numpy as np
 from bosdyn import geometry
-from bosdyn.api import (
-    image_pb2,
-    geometry_pb2,
-    manipulation_api_pb2,
-    trajectory_pb2,
-    robot_command_pb2,
-    synchronized_command_pb2,
-)
+from bosdyn.api import (geometry_pb2, image_pb2, manipulation_api_pb2,
+                        robot_command_pb2, synchronized_command_pb2,
+                        trajectory_pb2)
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.client import math_helpers
-from bosdyn.client.frame_helpers import (
-    GRAV_ALIGNED_BODY_FRAME_NAME,
-    get_vision_tform_body,
-    HAND_FRAME_NAME,
-)
+from bosdyn.client.frame_helpers import (GRAV_ALIGNED_BODY_FRAME_NAME,
+                                         HAND_FRAME_NAME,
+                                         get_vision_tform_body)
 from bosdyn.client.image import ImageClient
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
-from bosdyn.client.robot_command import (
-    RobotCommandClient,
-    RobotCommandBuilder,
-    blocking_stand,
-)
+from bosdyn.client.robot_command import (RobotCommandBuilder,
+                                         RobotCommandClient, blocking_stand)
 from bosdyn.client.robot_state import RobotStateClient
-from collections import OrderedDict
-import cv2
-from enum import Enum
 from google.protobuf import wrappers_pb2
-import os
-import numpy as np
-import time
+
 
 class SpotCamIds(Enum):
     r"""Enumeration of types of cameras."""
@@ -64,6 +56,7 @@ class SpotCamIds(Enum):
     RIGHT_DEPTH_IN_VISUAL_FRAME = "right_depth_in_visual_frame"
     RIGHT_FISHEYE = "right_fisheye_image"
 
+
 ARM_6DOF_NAMES = [
     "arm0.sh0",
     "arm0.sh1",
@@ -85,15 +78,16 @@ JOINT_NAMES = [
     "hl.kn",
     "hr.hx",
     "hr.hy",
-    "hr.kn"
+    "hr.kn",
 ]
+
 
 class Spot:
     def __init__(self, client_name_prefix):
         bosdyn.client.util.setup_logging()
         sdk = bosdyn.client.create_standard_sdk(client_name_prefix)
-        robot = sdk.create_robot(os.environ['HOSTNAME'])
-        robot.authenticate(os.environ['SPOT_USERNAME'], os.environ["SPOT_ADMIN_PW"])
+        robot = sdk.create_robot(os.environ["HOSTNAME"])
+        robot.authenticate(os.environ["SPOT_USERNAME"], os.environ["SPOT_ADMIN_PW"])
         robot.time_sync.wait_for_sync()
         self.robot = robot
         self.command_client = None
@@ -184,16 +178,12 @@ class Spot:
     def get_robot_state(self):
         robot_state_kin = self.get_robot_kinematic_state()
         robot_state = get_vision_tform_body(robot_state_kin.transforms_snapshot)
-        return robot_state 
+        return robot_state
 
     def get_robot_joint_states(self):
         robot_state_kin = self.get_robot_kinematic_state()
         joint_states = OrderedDict(
-            {
-                i.name: i
-                for i in robot_state_kin.joint_states
-                if i.name in JOINT_NAMES
-            }
+            {i.name: i for i in robot_state_kin.joint_states if i.name in JOINT_NAMES}
         )
         # joint_states = robot_state_kin.joint_states
         return joint_states
@@ -212,28 +202,34 @@ class Spot:
         # returns as yaw, pitch, roll. Reverse the list to get it in roll, pitch, yaw form
         return math_helpers.quat_to_eulerZYX(robot_state.rotation)[::-1]
 
-    def get_robot_velocity(self, frame='vision'):
+    def get_robot_velocity(self, frame="vision"):
         robot_state_kin = self.get_robot_kinematic_state()
-        if frame == 'odom':
+        if frame == "odom":
             robot_velocity = robot_state_kin.velocity_of_body_in_odom
-        elif frame == 'vision':
+        elif frame == "vision":
             robot_velocity = robot_state_kin.velocity_of_body_in_vision
         return robot_velocity
 
-    def get_robot_linear_vel(self, frame='vision'):
+    def get_robot_linear_vel(self, frame="vision"):
         robot_velocity = self.get_robot_velocity(frame)
-        linear_vel = np.array([robot_velocity.linear.x, robot_velocity.linear.y, robot_velocity.linear.z])
+        linear_vel = np.array(
+            [robot_velocity.linear.x, robot_velocity.linear.y, robot_velocity.linear.z]
+        )
         return linear_vel
 
-    def get_robot_linear_vel_local(self, frame='vision'):
+    def get_robot_linear_vel_local(self, frame="vision"):
         linear_vel = self.get_robot_linear_vel(frame)
         yaw = self.get_robot_rpy()[-1]
         R = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
         return np.linalg.inv(R) @ linear_vel
 
-    def get_robot_angular_vel(self, frame='vision'):
+    def get_robot_angular_vel(self, frame="vision"):
         robot_velocity = self.get_robot_velocity(frame)
-        return [robot_velocity.angular.x, robot_velocity.angular.y, robot_velocity.angular.z]
+        return [
+            robot_velocity.angular.x,
+            robot_velocity.angular.y,
+            robot_velocity.angular.z,
+        ]
 
     def get_base_transform_to(self, child_frame):
         kin_state = self.robot_state_client.get_robot_state().kinematic_state
@@ -272,6 +268,7 @@ class SpotLease:
         # Clear lease from Spot object
         self.spot.spot_lease = None
 
+
 def image_response_to_cv2(image_response):
     if image_response.shot.image.pixel_format == image_pb2.Image.PIXEL_FORMAT_DEPTH_U16:
         dtype = np.uint16
@@ -294,11 +291,10 @@ def scale_depth_img(img, min_depth=0.0, max_depth=10.0, as_img=False):
     img_copy = np.clip(img.astype(np.float32), a_min=min_depth, a_max=max_depth)
     img_copy = (img_copy - min_depth) / (max_depth - min_depth)
     if as_img:
-        img_copy = cv2.cvtColor(
-            (255.0 * img_copy).astype(np.uint8), cv2.COLOR_GRAY2BGR
-        )
+        img_copy = cv2.cvtColor((255.0 * img_copy).astype(np.uint8), cv2.COLOR_GRAY2BGR)
 
     return img_copy
+
 
 def wrap_heading(heading):
     """Ensures input heading is between -180 an 180; can be float or np.ndarray"""
