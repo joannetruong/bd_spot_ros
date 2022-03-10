@@ -15,22 +15,16 @@ import bosdyn.client.lease
 import bosdyn.client.util
 import cv2
 import numpy as np
-from bosdyn import geometry
-from bosdyn.api import (geometry_pb2, image_pb2, manipulation_api_pb2,
-                        robot_command_pb2, synchronized_command_pb2,
-                        trajectory_pb2)
+from bosdyn.api import (image_pb2)
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.client import math_helpers
-from bosdyn.client.frame_helpers import (GRAV_ALIGNED_BODY_FRAME_NAME,
-                                         HAND_FRAME_NAME,
+from bosdyn.client.frame_helpers import (VISION_FRAME_NAME,
                                          get_vision_tform_body)
 from bosdyn.client.image import ImageClient
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
 from bosdyn.client.robot_command import (RobotCommandBuilder,
                                          RobotCommandClient, blocking_stand)
 from bosdyn.client.robot_state import RobotStateClient
-from google.protobuf import wrappers_pb2
-
 
 class SpotCamIds(Enum):
     r"""Enumeration of types of cameras."""
@@ -117,11 +111,7 @@ class Spot:
     def power_on(
         self, timeout_sec=20, service_name=RobotCommandClient.default_service_name
     ):
-        self.robot.power_on(timeout_sec=timeout_sec)
-        assert self.robot.is_powered_on(), "Robot power on failed."
-        self.loginfo("Robot powered on.")
-
-    def power_off(self, cut_immediately=False, timeout_sec=20):
+        self.robot.power_on(timeolf, cut_immediately=False, timeout_sec=20):
         self.loginfo("Powering robot off...")
         self.robot.power_off(cut_immediately=cut_immediately, timeout_sec=timeout_sec)
         assert not self.robot.is_powered_on(), "Robot power off failed."
@@ -165,6 +155,37 @@ class Spot:
         )
         cmd_id = self.command_client.robot_command(
             robot_cmd, end_time_secs=time.time() + vel_time
+        )
+
+        return cmd_id
+
+    def set_base_position(self, x_pos, y_pos, end_time, params=None):
+        vision_tform_body = get_vision_tform_body(
+            self.get_robot_kinematic_state.transforms_snapshot
+        )
+        body_tform_goal = math_helpers.SE3Pose(
+            x=x_pos, y=y_pos, z=0, rot=math_helpers.Quat()
+        )
+
+        vision_tform_goal = vision_tform_body * body_tform_goal
+        if params is None:
+            params = spot_command_pb2.MobilityParams(
+                obstacle_params=spot_command_pb2.ObstacleParams(
+                    disable_vision_body_obstacle_avoidance=False,
+                    disable_vision_foot_obstacle_avoidance=False,
+                    disable_vision_foot_constraint_avoidance=False,
+                    obstacle_avoidance_padding=0.05,  # in meters
+                )
+            )
+        robot_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+            goal_x=vision_tform_goal.x,
+            goal_y=vision_tform_goal.y,
+            goal_heading=vision_tform_goal.rot.to_yaw(),
+            frame_name=VISION_FRAME_NAME,
+            params=params,
+        )
+        cmd_id = self.command_client.robot_command(
+            robot_cmd, end_time_secs=time.time() + end_time
         )
 
         return cmd_id
