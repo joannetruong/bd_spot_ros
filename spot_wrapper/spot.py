@@ -15,18 +15,21 @@ import bosdyn.client.lease
 import bosdyn.client.util
 import cv2
 import numpy as np
-from bosdyn.api import (image_pb2)
+from bosdyn.api import image_pb2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.client import math_helpers
-from bosdyn.client.frame_helpers import (VISION_FRAME_NAME,
-                                         get_vision_tform_body)
-from bosdyn.client.image import ImageClient
+from bosdyn.client.frame_helpers import VISION_FRAME_NAME, get_vision_tform_body
+from bosdyn.client.image import ImageClient, build_image_request
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
-from bosdyn.client.robot_command import (RobotCommandBuilder,
-                                         RobotCommandClient, blocking_stand)
+from bosdyn.client.robot_command import (
+    RobotCommandBuilder,
+    RobotCommandClient,
+    blocking_stand,
+)
 from bosdyn.client.robot_state import RobotStateClient
 
-class SpotCamIds(Enum):
+
+class SpotCamIds:
     r"""Enumeration of types of cameras."""
 
     BACK_DEPTH = "back_depth"
@@ -51,13 +54,9 @@ class SpotCamIds(Enum):
     RIGHT_FISHEYE = "right_fisheye_image"
 
 
-ARM_6DOF_NAMES = [
-    "arm0.sh0",
-    "arm0.sh1",
-    "arm0.el0",
-    "arm0.el1",
-    "arm0.wr0",
-    "arm0.wr1",
+SHOULD_ROTATE = [
+    SpotCamIds.FRONTLEFT_DEPTH,
+    SpotCamIds.FRONTRIGHT_DEPTH,
 ]
 
 JOINT_NAMES = [
@@ -111,7 +110,11 @@ class Spot:
     def power_on(
         self, timeout_sec=20, service_name=RobotCommandClient.default_service_name
     ):
-        self.robot.power_on(timeolf, cut_immediately=False, timeout_sec=20):
+        self.robot.power_on(timeout_sec=timeout_sec)
+        assert self.robot.is_powered_on(), "Robot power on failed."
+        self.loginfo("Robot powered on.")
+
+    def power_off(self, cut_immediately=False, timeout_sec=20):
         self.loginfo("Powering robot off...")
         self.robot.power_off(cut_immediately=cut_immediately, timeout_sec=timeout_sec)
         assert not self.robot.is_powered_on(), "Robot power off failed."
@@ -125,15 +128,23 @@ class Spot:
     def loginfo(self, *args, **kwargs):
         self.robot.logger.info(*args, **kwargs)
 
-    def get_image_responses(self, sources):
+    def get_image_responses(self, sources, quality=None):
         """Retrieve images from Spot's cameras
-
         :param sources: list containing camera uuids
+        :param quality: either an int or a list specifying what quality each source
+            should return its image with
         :return: list containing bosdyn image response objects
         """
-        image_responses = self.image_client.get_image_from_sources(
-            [s.value for s in sources]
-        )
+        if quality is not None:
+            if isinstance(quality, int):
+                quality = [quality] * len(sources)
+            else:
+                assert len(quality) == len(sources)
+            sources = [build_image_request(src, q) for src, q in zip(sources, quality)]
+            image_responses = self.image_client.get_image(sources)
+        else:
+            image_responses = self.image_client.get_image_from_sources(sources)
+
         return image_responses
 
     def set_base_velocity(self, x_vel, y_vel, ang_vel, vel_time, params=None):
@@ -153,15 +164,17 @@ class Spot:
             v_rot=body_tform_goal.angular_velocity,
             params=params,
         )
+        end_time = time.time() + vel_time
         cmd_id = self.command_client.robot_command(
             robot_cmd, end_time_secs=time.time() + vel_time
         )
-
+        while time.time() < end_time:
+            pass
         return cmd_id
 
     def set_base_position(self, x_pos, y_pos, end_time, params=None):
         vision_tform_body = get_vision_tform_body(
-            self.get_robot_kinematic_state.transforms_snapshot
+            self.get_robot_kinematic_state().transforms_snapshot
         )
         body_tform_goal = math_helpers.SE3Pose(
             x=x_pos, y=y_pos, z=0, rot=math_helpers.Quat()
@@ -184,10 +197,10 @@ class Spot:
             frame_name=VISION_FRAME_NAME,
             params=params,
         )
-        cmd_id = self.command_client.robot_command(
-            robot_cmd, end_time_secs=time.time() + end_time
-        )
-
+        end_time = time.time() + end_time
+        cmd_id = self.command_client.robot_command(robot_cmd, end_time_secs=end_time)
+        while time.time() < end_time:
+            pass
         return cmd_id
 
     def get_robot_foot_state(self):
@@ -290,7 +303,7 @@ class SpotLease:
         self.spot.spot_lease = None
 
 
-def image_response_to_cv2(image_response):
+def image_response_to_cv2(image_response, reorient=True):
     if image_response.shot.image.pixel_format == image_pb2.Image.PIXEL_FORMAT_DEPTH_U16:
         dtype = np.uint16
     else:
@@ -303,7 +316,8 @@ def image_response_to_cv2(image_response):
         )
     else:
         img = cv2.imdecode(img, -1)
-
+    if reorient and image_response.source.name in SHOULD_ROTATE:
+        img = np.rot90(img, k=3)
     return img
 
 
