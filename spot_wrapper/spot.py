@@ -74,6 +74,8 @@ JOINT_NAMES = [
     "hr.kn",
 ]
 
+HOME_TXT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "home.txt")
+
 
 class Spot:
     def __init__(self, client_name_prefix):
@@ -97,6 +99,16 @@ class Spot:
         self.robot_state_client = robot.ensure_client(
             RobotStateClient.default_service_name
         )
+        # Used to re-center origin of global frame
+        if os.path.isfile(HOME_TXT):
+            with open(HOME_TXT) as f:
+                data = f.read()
+            self.global_T_local = np.array([float(d) for d in data.split(", ")[:9]])
+            self.global_T_local = self.global_T_local.reshape([3, 3])
+            self.robot_recenter_yaw = float(data.split(", ")[-1])
+        else:
+            self.global_T_local = None
+            self.robot_recenter_yaw = None
 
     def get_lease(self, hijack=False):
         # Make sure a lease for this client isn't already active
@@ -264,6 +276,40 @@ class Spot:
             robot_velocity.angular.y,
             robot_velocity.angular.z,
         ]
+
+    def get_xy_yaw(self, use_boot_origin=False, robot_state=None):
+        """
+        Returns the relative x and y distance from start, as well as relative heading
+        """
+        robot_state_kin = self.get_robot_kinematic_state()
+        robot_tform = get_vision_tform_body(robot_state_kin.transforms_snapshot)
+        yaw = math_helpers.quat_to_eulerZYX(robot_tform.rotation)[0]
+        if self.global_T_local is None or use_boot_origin:
+            return robot_tform.x, robot_tform.y, yaw
+        x, y, w = self.global_T_local.dot(np.array([robot_tform.x, robot_tform.y, 1.0]))
+        x, y = x / w, y / w
+        yaw = wrap_heading(yaw - self.robot_recenter_yaw)
+
+        return x, y, yaw
+
+    def home_robot(self):
+        x, y, yaw = self.get_xy_yaw(use_boot_origin=True)
+        # Create offset transformation matrix
+        local_T_global = np.array(
+            [
+                [np.cos(yaw), -np.sin(yaw), x],
+                [np.sin(yaw), np.cos(yaw), y],
+                [0.0, 0.0, 1.0],
+            ]
+        )
+        self.global_T_local = np.linalg.inv(local_T_global)
+        self.robot_recenter_yaw = yaw
+
+        as_string = list(self.global_T_local.flatten()) + [yaw]
+        as_string = f"{as_string}"[1:-1]  # [1:-1] removes brackets
+        with open(HOME_TXT, "w") as f:
+            f.write(as_string)
+        self.loginfo(f"Wrote:\n{as_string}\nto: {HOME_TXT}")
 
     def get_base_transform_to(self, child_frame):
         kin_state = self.robot_state_client.get_robot_state().kinematic_state
