@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+killall -9 roscore
+killall -9 rosmaster
 roscore & \
 python ros_nodes/spot_camera_node.py & \
 python ros_nodes/spot_state_node.py & \
