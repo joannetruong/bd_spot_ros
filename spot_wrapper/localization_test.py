@@ -1,3 +1,5 @@
+import argparse
+
 import numpy as np
 from spot import Spot
 
@@ -48,10 +50,17 @@ def velocity_test():
 
 
 def main(spot: Spot):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-v", "--velocity", action="store_true")
+    args = parser.parse_args()
+
     spot.power_on()
     spot.blocking_stand()
     for _ in range(NUM_TRIALS):
-        velocity_test()
+        if args.velocity:
+            velocity_test()
+        else:
+            position_test()
 
 
 if __name__ == "__main__":

@@ -18,14 +18,12 @@ import numpy as np
 from bosdyn.api import image_pb2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.client import math_helpers
-from bosdyn.client.frame_helpers import VISION_FRAME_NAME, get_vision_tform_body
+from bosdyn.client.frame_helpers import (VISION_FRAME_NAME,
+                                         get_vision_tform_body)
 from bosdyn.client.image import ImageClient, build_image_request
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
-from bosdyn.client.robot_command import (
-    RobotCommandBuilder,
-    RobotCommandClient,
-    blocking_stand,
-)
+from bosdyn.client.robot_command import (RobotCommandBuilder,
+                                         RobotCommandClient, blocking_stand)
 from bosdyn.client.robot_state import RobotStateClient
 
 
@@ -57,6 +55,8 @@ class SpotCamIds:
 SHOULD_ROTATE = [
     SpotCamIds.FRONTLEFT_DEPTH,
     SpotCamIds.FRONTRIGHT_DEPTH,
+    SpotCamIds.FRONTLEFT_FISHEYE,
+    SpotCamIds.FRONTRIGHT_FISHEYE,
 ]
 
 JOINT_NAMES = [
