@@ -18,6 +18,7 @@ import numpy as np
 from bosdyn.api import image_pb2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.client import math_helpers
+from bosdyn.client.docking import blocking_dock_robot
 from bosdyn.client.frame_helpers import (VISION_FRAME_NAME,
                                          get_vision_tform_body)
 from bosdyn.client.image import ImageClient, build_image_request
@@ -317,6 +318,9 @@ class Spot:
             child_frame
         ).parent_tform_child
         return kin_state.position, kin_state.rotation
+
+    def dock(self, dock_id):
+        blocking_dock_robot(self.robot, dock_id)
 
 
 class SpotLease:
