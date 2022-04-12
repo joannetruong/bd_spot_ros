@@ -19,12 +19,14 @@ from bosdyn.api import image_pb2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
 from bosdyn.client import math_helpers
 from bosdyn.client.docking import blocking_dock_robot
-from bosdyn.client.frame_helpers import (VISION_FRAME_NAME,
-                                         get_vision_tform_body)
+from bosdyn.client.frame_helpers import VISION_FRAME_NAME, get_vision_tform_body
 from bosdyn.client.image import ImageClient, build_image_request
 from bosdyn.client.manipulation_api_client import ManipulationApiClient
-from bosdyn.client.robot_command import (RobotCommandBuilder,
-                                         RobotCommandClient, blocking_stand)
+from bosdyn.client.robot_command import (
+    RobotCommandBuilder,
+    RobotCommandClient,
+    blocking_stand,
+)
 from bosdyn.client.robot_state import RobotStateClient
 
 
@@ -79,7 +81,7 @@ HOME_TXT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "home.txt")
 
 
 class Spot:
-    def __init__(self, client_name_prefix):
+    def __init__(self, client_name_prefix, disable_obstacle_avoidance=False):
         bosdyn.client.util.setup_logging()
         sdk = bosdyn.client.create_standard_sdk(client_name_prefix)
         robot = sdk.create_robot(os.environ["HOSTNAME"])
@@ -88,6 +90,9 @@ class Spot:
         self.robot = robot
         self.command_client = None
         self.spot_lease = None
+        self.disable_obstacle_avoidance = disable_obstacle_avoidance
+        if self.disable_obstacle_avoidance:
+            print("!!!!!!!!!!! WARNING, OBSTACLE AVOIDANCE IS OFF!!!!!!!!!!!")
 
         # Get clients
         self.command_client = robot.ensure_client(
@@ -165,7 +170,7 @@ class Spot:
         if params is None:
             params = spot_command_pb2.MobilityParams(
                 obstacle_params=spot_command_pb2.ObstacleParams(
-                    disable_vision_body_obstacle_avoidance=False,
+                    disable_vision_body_obstacle_avoidance=self.disable_obstacle_avoidance,
                     disable_vision_foot_obstacle_avoidance=False,
                     disable_vision_foot_constraint_avoidance=False,
                     obstacle_avoidance_padding=0.05,  # in meters
