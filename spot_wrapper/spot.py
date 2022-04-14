@@ -221,6 +221,29 @@ class Spot:
             pass
         return cmd_id
 
+    def set_global_base_position(self, x_pos, y_pos, yaw, end_time, params=None):
+        if params is None:
+            params = spot_command_pb2.MobilityParams(
+                obstacle_params=spot_command_pb2.ObstacleParams(
+                    disable_vision_body_obstacle_avoidance=False,
+                    disable_vision_foot_obstacle_avoidance=False,
+                    disable_vision_foot_constraint_avoidance=False,
+                    obstacle_avoidance_padding=0.05,  # in meters
+                )
+            )
+        robot_cmd = RobotCommandBuilder.synchro_se2_trajectory_point_command(
+            goal_x=x_pos,
+            goal_y=y_pos,
+            goal_heading=yaw,
+            frame_name=VISION_FRAME_NAME,
+            params=params,
+        )
+        end_time = time.time() + end_time
+        cmd_id = self.command_client.robot_command(robot_cmd, end_time_secs=end_time)
+        while time.time() < end_time:
+            pass
+        return cmd_id
+
     def get_robot_foot_state(self):
         return self.robot_state_client.get_robot_state().foot_state
 
