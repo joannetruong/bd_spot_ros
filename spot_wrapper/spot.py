@@ -165,7 +165,7 @@ class Spot:
         if params is None:
             params = spot_command_pb2.MobilityParams(
                 obstacle_params=spot_command_pb2.ObstacleParams(
-                    disable_vision_body_obstacle_avoidance=True,
+                    disable_vision_body_obstacle_avoidance=False,
                     disable_vision_foot_obstacle_avoidance=False,
                     disable_vision_foot_constraint_avoidance=False,
                     obstacle_avoidance_padding=0.05,  # in meters
