@@ -27,6 +27,7 @@ from bosdyn.client.robot_command import (
     RobotCommandBuilder,
     RobotCommandClient,
     blocking_stand,
+    blocking_selfright,
 )
 from bosdyn.client.robot_state import RobotStateClient
 
@@ -144,6 +145,11 @@ class Spot:
         blocking_stand(self.command_client, timeout_sec=timeout_sec)
         self.loginfo("Robot standing.")
 
+    def blocking_selfright(self, timeout_sec=20):
+        self.loginfo("Commanding robot to self-right (blocking)...")
+        blocking_selfright(self.command_client, timeout_sec=timeout_sec)
+        self.loginfo("Robot has self-righted.")
+
     def loginfo(self, *args, **kwargs):
         self.robot.logger.info(*args, **kwargs)
 
@@ -253,8 +259,10 @@ class Spot:
         return cmd_id
 
     def _get_local_T_global(self, x=None, y=None, yaw=None):
-        if x is None:
-            x, y, yaw = self.get_xy_yaw(use_boot_origin=True)
+        curr_yaw = 0.0
+        if x is None :
+            x, y, curr_yaw = self.get_xy_yaw(use_boot_origin=True)
+        yaw = curr_yaw if yaw is None else yaw
         # Create offset transformation matrix
         local_T_global = np.array(
             [
@@ -328,7 +336,7 @@ class Spot:
         ]
 
     def get_battery_charge(self):
-        state = self.get_robot_state()
+        state = self.robot_state_client.get_robot_state()
         return state.power_state.locomotion_charge_percentage.value
 
     def roll_over(self, roll_over_left=True):
@@ -356,7 +364,6 @@ class Spot:
     def xy_yaw_global_to_home(self, x, y, yaw):
         x, y, w = self.global_T_home.dot(np.array([x, y, 1.0]))
         x, y = x / w, y / w
-
         return x, y, wrap_heading(yaw - self.robot_recenter_yaw)
 
     def xy_yaw_home_to_global(self, x, y, yaw):
@@ -366,11 +373,13 @@ class Spot:
 
         return x, y, wrap_heading(self.robot_recenter_yaw - yaw)
 
-    def home_robot(self):
-        x, y, yaw = self.get_xy_yaw(use_boot_origin=True)
-        local_T_global = self._get_local_T_global()
+    def home_robot(self, yaw=None):
+        x, y, curr_yaw = self.get_xy_yaw(use_boot_origin=True)
+        yaw = curr_yaw if yaw is None else yaw
+        local_T_global = self._get_local_T_global(yaw=yaw)
         self.global_T_home = np.linalg.inv(local_T_global)
-        self.robot_recenter_yaw = yaw
+        if yaw != 0.0:
+            self.robot_recenter_yaw = yaw
 
         as_string = list(self.global_T_home.flatten()) + [yaw]
         as_string = f"{as_string}"[1:-1]  # [1:-1] removes brackets
