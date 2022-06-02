@@ -117,6 +117,7 @@ class Spot:
         else:
             self.global_T_home = None
             self.robot_recenter_yaw = None
+        self.boot_yaw = None
 
     def get_lease(self, hijack=False):
         # Make sure a lease for this client isn't already active
@@ -262,6 +263,8 @@ class Spot:
         curr_yaw = 0.0
         if x is None :
             x, y, curr_yaw = self.get_xy_yaw(use_boot_origin=True)
+            if self.boot_yaw is None:
+                self.boot_yaw = curr_yaw
         yaw = curr_yaw if yaw is None else yaw
         # Create offset transformation matrix
         local_T_global = np.array(
@@ -373,7 +376,7 @@ class Spot:
 
         return x, y, wrap_heading(self.robot_recenter_yaw - yaw)
 
-    def home_robot(self, yaw=None):
+    def home_robot(self, x=None, y=None, yaw=None):
         x, y, curr_yaw = self.get_xy_yaw(use_boot_origin=True)
         yaw = curr_yaw if yaw is None else yaw
         local_T_global = self._get_local_T_global(yaw=yaw)
